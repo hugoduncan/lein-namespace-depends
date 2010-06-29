@@ -38,15 +38,15 @@
         ;ns-effect (clojure.core/in-ns name)
         ]
     (set! *dependencies* (vec references))
-    `(do
-       (clojure.core/in-ns '~name)
-       (with-loading-context
-        (binding [clojure.core/ns ~#'leiningen.namespace-graph/core-ns]
-          ~@(when gen-class-call (list gen-class-call))
-          ~@(when (and (not= name 'clojure.core)
-                       (not-any? #(= :refer-clojure (first %)) references))
-              `((clojure.core/refer '~'clojure.core)))
-          ~@(map process-reference references))))))
+    (binding [clojure.core/ns #'core-ns]
+      `(do
+         (clojure.core/in-ns '~name)
+         (with-loading-context
+           ~@(when gen-class-call (list gen-class-call))
+           ~@(when (and (not= name 'clojure.core)
+                        (not-any? #(= :refer-clojure (first %)) references))
+               `((clojure.core/refer '~'clojure.core)))
+           ~@(map process-reference references))))))
 
 (defmacro with-dependencies
   "Creates a thread binding for *dependencies*, and binds clojure.core/ns to
@@ -88,12 +88,15 @@
                   (java.io.File. source-path))
          graph {}]
     (if (seq to-load)
-      (let [dependencies (with-dependencies
-                           (require (first to-load) :reload)
-                           (extract-dependencies *dependencies*))]
-        (recur
-         (distinct (concat (rest to-load) dependencies))
-         (assoc graph (first to-load) dependencies)))
+      (if (graph (first to-load))
+        (recur (rest to-load) graph)
+        (let [dependencies
+              (with-dependencies
+                (require (first to-load) :reload)
+                (extract-dependencies *dependencies*))]
+          (recur
+           (distinct (concat (rest to-load) dependencies))
+           (assoc graph (first to-load) dependencies))))
       (into {} (filter #(seq (second %)) graph)))))
 
 
